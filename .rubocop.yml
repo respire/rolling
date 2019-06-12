@@ -16,6 +16,9 @@ Style/AsciiComments:
 Style/NumericPredicate:
   Enabled: false
 
+Lint/RescueException:
+  Enabled: false
+
 Metrics/BlockNesting:
   Enabled: false
 

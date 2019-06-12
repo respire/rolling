@@ -10,6 +10,7 @@ class Client
   def initialize(watcher, on_disconnected)
     @watcher = watcher
     @on_disconnected = on_disconnected
+    @nbytes_sent = 0
   end
 
   def inspect
@@ -17,12 +18,12 @@ class Client
   end
 
   def read_and_echo
-    @watcher.async_read(1, &method(:echo_bytes))
+    @watcher.async_read(32, &method(:echo_bytes))
     self
   end
 
   def echo_bytes(ret)
-    Rolling::Util.log_info ret
+    # Rolling::Util.log_info ret
     case ret.state
     when :ok
       @watcher.async_write(ret.data, &method(:on_write_complete))
@@ -33,11 +34,12 @@ class Client
   end
 
   def on_write_complete(ret)
-    Rolling::Util.log_info ret
-
+    # Rolling::Util.log_info ret
     return unless ret.state == :ok
-
-    Rolling::Util.log_info "#{ret.data.limit} bytes was echoed back"
+    @nbytes_sent += ret.data.limit
+    if (@nbytes_sent % 32).zero? && ((@nbytes_sent / 32) % 100).zero?
+      Rolling::Util.log_info "#{@nbytes_sent} bytes was echoed back"
+    end
   end
 end
 

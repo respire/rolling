@@ -16,6 +16,13 @@ module Rolling
         @task_manager.fire
         @selector.select(0.001, &method(:handle_events))
       end
+
+      @state = :stopped
+    end
+
+    def stop
+      # TODO: multithread-friendly state management should be introduced in future so as to support reactor-per-thread model.
+      @state = :stopping
     end
 
     def next_tick(&blk)
@@ -25,6 +32,10 @@ module Rolling
 
     def listen(io, &blk)
       IOListener.new(self, io, &blk)
+    end
+
+    def connect(io, remote_addr, &blk)
+      IOConnector.new(self, io, remote_addr, &blk)
     end
 
     def watch(io)

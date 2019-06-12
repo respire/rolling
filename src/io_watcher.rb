@@ -11,7 +11,8 @@ module Rolling
     def initialize(evloop, io)
       @evloop = evloop
       @io = io
-      @remote_port, @remote_addr = io.peeraddr[1..2]
+      @local_addr = io.local_address
+      @remote_addr = io.remote_address
       @monitor = selector.register(io, :rw)
       @monitor.interests = nil
       @monitor.value = method(:handle_io_events)
@@ -24,7 +25,7 @@ module Rolling
     end
 
     def inspect
-      "\#<Rolling::IOWatcher:#{format('%#x', object_id)} #{@remote_addr}\##{@remote_port} #{@eof ? 'EOF' : ''} #{@eof_reason}>"
+      "\#<Rolling::IOWatcher:#{format('%#x', object_id)} @remote_addr=#{@remote_addr.inspect} @local_addr=#{@local_addr.inspect} #{@eof ? 'EOF' : ''} #{@eof_reason}>"
     end
 
     def async_read(nbytes, &callback)
