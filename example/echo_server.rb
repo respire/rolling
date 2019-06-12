@@ -36,10 +36,9 @@ class Client
   def on_write_complete(ret)
     # Rolling::Util.log_info ret
     return unless ret.state == :ok
+
     @nbytes_sent += ret.data.limit
-    if (@nbytes_sent % 32).zero? && ((@nbytes_sent / 32) % 100).zero?
-      Rolling::Util.log_info "#{@nbytes_sent} bytes was echoed back"
-    end
+    Rolling::Util.log_info "#{@nbytes_sent} bytes was echoed back" if (@nbytes_sent % 32).zero? && ((@nbytes_sent / 32) % 100).zero?
   end
 end
 

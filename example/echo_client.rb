@@ -52,9 +52,7 @@ class TCPEchoClient
     case ret.state
     when :ok
       @nbytes_read += 32
-      if ((@nbytes_read / 32) % 100) == 0
-        Rolling::Util.log_info "#{@nbytes_read} bytes read"
-      end
+      Rolling::Util.log_info "#{@nbytes_read} bytes read" if ((@nbytes_read / 32) % 100) == 0
       read_some
     when :eof
       Rolling::Util.log_info 'remote closed connection'
