@@ -31,7 +31,13 @@ module Rolling
     def async_read(nbytes, &callback)
       @rseqs << AsyncReadRequest.new(nbytes, callback)
       check_if_any_rseq_can_be_resolved
-      nbytes
+      self
+    end
+
+    def async_read_some(&callback)
+      @rseqs << AsyncReadRequest.new(-1, callback)
+      check_if_any_rseq_can_be_resolved
+      self
     end
 
     def async_write(data, &callback)
@@ -40,8 +46,7 @@ module Rolling
 
       @wseqs << AsyncWriteRequest.new(@write_chunks.add(data), callback)
       check_if_any_wseq_can_be_resolved
-
-      data.length
+      self
     end
 
     def unwatch_and_close(ex = nil)
@@ -87,7 +92,7 @@ module Rolling
           state = :eof
           res = @eof_reason
         else
-          res = @read_chunks.get(rseq.nbytes)
+          res = rseq.nbytes == -1 ? @read_chunks.get_some : @read_chunks.get(rseq.nbytes)
           break if res == :unavailable
         end
 

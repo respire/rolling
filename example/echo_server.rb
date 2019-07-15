@@ -18,7 +18,7 @@ class Client
   end
 
   def read_and_echo
-    @watcher.async_read(32, &method(:echo_bytes))
+    @watcher.async_read_some(&method(:echo_bytes))
     self
   end
 
@@ -38,7 +38,7 @@ class Client
     return unless ret.state == :ok
 
     @nbytes_sent += ret.data.limit
-    Rolling::Util.log_info "#{@nbytes_sent} bytes was echoed back" if (@nbytes_sent % 32).zero? && ((@nbytes_sent / 32) % 100).zero?
+    Rolling::Util.log_info "#{@nbytes_sent} bytes was echoed back" if (@nbytes_sent % 1024).zero?
   end
 end
 

@@ -28,12 +28,12 @@ class TCPEchoClient
   end
 
   def write_some
-    content = SecureRandom.hex
+    content = 100.times.map { SecureRandom.hex }.join
     @watcher.async_write(content, &method(:on_write_complete))
   end
 
   def read_some
-    @watcher.async_read(32, &method(:on_read_complete))
+    @watcher.async_read_some(&method(:on_read_complete))
   end
 
   def on_write_complete(ret)
@@ -51,8 +51,8 @@ class TCPEchoClient
     # Rolling::Util.log_info ret
     case ret.state
     when :ok
-      @nbytes_read += 32
-      Rolling::Util.log_info "#{@nbytes_read} bytes read" if ((@nbytes_read / 32) % 100) == 0
+      @nbytes_read += ret.data.length
+      Rolling::Util.log_info "#{@nbytes_read} bytes read" if (@nbytes_read % 1024).zero?
       read_some
     when :eof
       Rolling::Util.log_info 'remote closed connection'

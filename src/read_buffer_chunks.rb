@@ -39,6 +39,10 @@ module Rolling
       strs_read.join
     end
 
+    def get_some
+      @total_nbytes < 1 ? :unavailable : get(@total_nbytes)
+    end
+
     def read_some(io)
       total_bytes_read = 0
       loop do
