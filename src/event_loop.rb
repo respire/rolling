@@ -13,8 +13,8 @@ module Rolling
       @state = :running
 
       until @state == :stopping || @state == :stopped
-        @task_manager.fire
-        @selector.select(0.001, &method(:handle_events))
+        select_timeout = @task_manager.fire
+        @selector.select(select_timeout, &method(:handle_events))
       end
 
       @state = :stopped
@@ -27,6 +27,11 @@ module Rolling
 
     def next_tick(&blk)
       @task_manager.append(0, &blk)
+      self
+    end
+
+    def add_timer(secs, &blk)
+      @task_manager.append(secs, &blk)
       self
     end
 

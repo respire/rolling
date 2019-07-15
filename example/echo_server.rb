@@ -69,6 +69,12 @@ class TCPEchoServer
   def register_server
     server = TCPServer.new '127.0.0.1', 8088
     @evloop.listen(server, &method(:accept))
+    @evloop.add_timer(3, &method(:report))
+  end
+
+  def report
+    Rolling::Util.logger.info "connected clients: #{@clients.length}"
+    @evloop.add_timer(3, &method(:report))
   end
 end
 
