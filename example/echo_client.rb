@@ -8,6 +8,10 @@ require 'securerandom'
 class TCPEchoClient
   def initialize(evloop)
     @evloop = evloop
+    @nbytes_read = 0
+    @nbytes_sent = 0
+    @rx = 0
+    @tx = 0
     register_client
   end
 
@@ -18,7 +22,6 @@ class TCPEchoClient
     case res.state
     when :ok
       @watcher = res.data
-      @nbytes_read = 0
       write_some
       read_some
     when :error
@@ -40,6 +43,17 @@ class TCPEchoClient
     # Rolling::Util.log_info ret
     case ret.state
     when :ok
+      @nbytes_sent += ret.data
+      @tx_last_ticks ||= Rolling::Task.current_ticks
+      current_ticks = Rolling::Task.current_ticks
+      if current_ticks - @tx_last_ticks >= 3
+        @tx_last_nbytes_read ||= 0
+        current_nbytes_read = @nbytes_read
+        @tx = ((current_nbytes_read - @tx_last_nbytes_read) / 1024.0 / (current_ticks - @tx_last_ticks)).round
+        Rolling::Util.log_info "RX: #{@rx} KB/s | TX: #{@tx} KB/s"
+        @tx_last_nbytes_read = current_nbytes_read
+        @tx_last_ticks = current_ticks
+      end
       write_some
     when :eof
       Rolling::Util.log_info 'remote closed connection'
@@ -51,8 +65,17 @@ class TCPEchoClient
     # Rolling::Util.log_info ret
     case ret.state
     when :ok
-      @nbytes_read += ret.data.length
-      Rolling::Util.log_info "#{@nbytes_read} bytes read" if (@nbytes_read % 1024).zero?
+      @nbytes_read += ret.data.bytesize
+      @rx_last_ticks ||= Rolling::Task.current_ticks
+      current_ticks = Rolling::Task.current_ticks
+      if current_ticks - @rx_last_ticks >= 3
+        @rx_last_nbytes_read ||= 0
+        current_nbytes_read = @nbytes_read
+        @rx = ((current_nbytes_read - @rx_last_nbytes_read) / 1024.0 / (current_ticks - @rx_last_ticks)).round
+        Rolling::Util.log_info "RX: #{@rx} KB/s | TX: #{@tx} KB/s"
+        @rx_last_nbytes_read = current_nbytes_read
+        @rx_last_ticks = current_ticks
+      end
       read_some
     when :eof
       Rolling::Util.log_info 'remote closed connection'

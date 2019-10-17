@@ -10,7 +10,10 @@ class Client
   def initialize(watcher, on_disconnected)
     @watcher = watcher
     @on_disconnected = on_disconnected
+    @nbytes_read = 0
     @nbytes_sent = 0
+    @rx = 0
+    @tx = 0
   end
 
   def inspect
@@ -26,6 +29,18 @@ class Client
     # Rolling::Util.log_info ret
     case ret.state
     when :ok
+      @nbytes_read += ret.data.bytesize
+      @rx_last_ticks ||= Rolling::Task.current_ticks
+      current_ticks = Rolling::Task.current_ticks
+      if current_ticks - @rx_last_ticks >= 3
+        @rx_last_nbytes_read ||= 0
+        current_nbytes_read = @nbytes_read
+        @rx = ((current_nbytes_read - @rx_last_nbytes_read) / 1024.0 / (current_ticks - @rx_last_ticks)).round
+        Rolling::Util.log_info "RX: #{@rx} KB/s | TX: #{@tx} KB/s"
+        @rx_last_nbytes_read = current_nbytes_read
+        @rx_last_ticks = current_ticks
+      end
+
       @watcher.async_write(ret.data, &method(:on_write_complete))
       read_and_echo
     when :eof
@@ -38,7 +53,16 @@ class Client
     return unless ret.state == :ok
 
     @nbytes_sent += ret.data
-    Rolling::Util.log_info "#{@nbytes_sent} bytes was echoed back" if (@nbytes_sent % 1024).zero?
+    @tx_last_ticks ||= Rolling::Task.current_ticks
+    current_ticks = Rolling::Task.current_ticks
+    return unless current_ticks - @tx_last_ticks >= 3
+
+    @tx_last_nbytes_read ||= 0
+    current_nbytes_read = @nbytes_read
+    @tx = ((current_nbytes_read - @tx_last_nbytes_read) / 1024.0 / (current_ticks - @tx_last_ticks)).round
+    Rolling::Util.log_info "RX: #{@rx} KB/s | TX: #{@tx} KB/s"
+    @tx_last_nbytes_read = current_nbytes_read
+    @tx_last_ticks = current_ticks
   end
 end
 
