@@ -16,6 +16,7 @@ module Rolling
       @monitor = selector.register(io, :rw)
       @monitor.interests = nil
       @monitor.value = method(:handle_io_events)
+      @monitoring_read = false
       @read_chunks = ReadBufferChunks.new
       @rseqs = []
       @write_chunks = WriteBufferChunks.new
@@ -29,15 +30,11 @@ module Rolling
     end
 
     def async_read(nbytes, &callback)
-      @rseqs << AsyncReadRequest.new(nbytes, callback)
-      check_if_any_rseq_can_be_resolved
-      self
+      read_data_from_chunks(nbytes, callback)
     end
 
     def async_read_some(&callback)
-      @rseqs << AsyncReadRequest.new(-1, callback)
-      check_if_any_rseq_can_be_resolved
-      self
+      read_data_from_chunks(-1, callback)
     end
 
     def async_write(data, &callback)
@@ -70,14 +67,44 @@ module Rolling
     def handle_io_events(monitor)
       if monitor.readable?
         bytes_read = nil
-        Util.safe_execute(method(:unwatch_and_close)) { bytes_read = @read_chunks.read_some(monitor.io) }
-        unwatch_and_close if bytes_read&.zero?
+        Util.safe_execute(default_errback) { bytes_read = @read_chunks.read_some(monitor.io) }
+        default_errback.call if !@read_chunks.backoff? && bytes_read&.zero?
         check_if_any_rseq_can_be_resolved
+        if (@rseqs.empty? || @read_chunks.backoff?) && !monitor.closed?
+          @monitoring_read = false
+          monitor.remove_interest(:r)
+        end
       elsif monitor.writable?
         bytes_sent = nil
         Util.safe_execute(method(:unwatch_and_close)) { bytes_sent = @write_chunks.write_some(monitor.io) }
         check_if_any_wseq_can_be_resolved
       end
+    end
+
+    def default_errback
+      @default_errback ||= method(:unwatch_and_close)
+    end
+
+    def read_data_from_chunks(nbytes, callback)
+      if @eof
+        res = AsyncReadResult.new(:eof, @eof_reason)
+        Util.safe_execute(default_errback) { callback.call(res) }
+      else
+        data = nbytes < 0 ? @read_chunks.pull : @read_chunks.get(nbytes)
+        if data == :unavailable
+          @rseqs << AsyncReadRequest.new(nbytes, callback)
+        else
+          res = AsyncReadResult.new(:ok, data)
+          Util.safe_execute(default_errback) { callback.call(res) }
+        end
+      end
+
+      if !@read_chunks.backoff? && !@rseqs.empty? && !@monitoring_read
+        @monitoring_read = true
+        @monitor.add_interest(:r)
+      end
+
+      self
     end
 
     def check_if_any_rseq_can_be_resolved
@@ -92,29 +119,18 @@ module Rolling
           state = :eof
           res = @eof_reason
         else
-          res = rseq.nbytes == -1 ? @read_chunks.get_some : @read_chunks.get(rseq.nbytes)
+          res = rseq.nbytes == -1 ? @read_chunks.pull : @read_chunks.get(rseq.nbytes)
           break if res == :unavailable
         end
 
         ret = AsyncReadResult.new(state, res)
-        errback = method(:unwatch_and_close)
-
-        @evloop.next_tick do
-          Util.safe_execute(errback) { rseq.callback.call(ret) }
-        end
+        errback = @eof ? nil : default_errback
+        Util.safe_execute(errback) { rseq.callback.call(ret) }
 
         purge_idx += 1
       end
 
       @rseqs.slice!(0..purge_idx) if purge_idx >= 0
-
-      return if @eof
-
-      if @rseqs.empty?
-        @monitor.remove_interest(:r)
-      else
-        @monitor.add_interest(:r)
-      end
     end
 
     def check_if_any_wseq_can_be_resolved

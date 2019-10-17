@@ -7,10 +7,15 @@ module Rolling
       @nbytes_per_chunks = 16_384
       @max_chunks = 64
       @total_nbytes = 0
+      @backoff = false
     end
 
     def can_read?(nbytes)
       @total_nbytes >= nbytes
+    end
+
+    def backoff?
+      @backoff
     end
 
     def get(nbytes)
@@ -34,12 +39,13 @@ module Rolling
       end
 
       @chunks.slice!(0..purge_idx) if purge_idx >= 0
+      @backoff = @chunks.length >= @max_chunks
 
       @total_nbytes -= nbytes
       strs_read.join
     end
 
-    def get_some
+    def pull
       @total_nbytes < 1 ? :unavailable : get(@total_nbytes)
     end
 
@@ -47,6 +53,8 @@ module Rolling
       total_bytes_read = 0
       loop do
         chunk = find_an_available_chunk_to_fill
+        break unless chunk
+
         nbytes = chunk.read_from(io)
         total_bytes_read += nbytes
         break if nbytes.zero?
@@ -64,11 +72,16 @@ module Rolling
     end
 
     def append_chunks
-      # TODO: allow different overflow handling policies. e.g. backoff
-      raise ReadBufferChunksOverflowError, "nbytes_per_chunks: #{@nbytes_per_chunks}, max_chunks: #{@max_chunks}" if @chunks.length >= @max_chunks
+      # use backoff overflow policy
+      chunk = nil
 
-      chunk = NIO::ByteBuffer.new(@nbytes_per_chunks)
-      @chunks << chunk
+      if @chunks.length < @max_chunks
+        chunk = NIO::ByteBuffer.new(@nbytes_per_chunks)
+        @chunks << chunk
+      end
+
+      @backoff = @chunks.length >= @max_chunks
+
       chunk
     end
   end
