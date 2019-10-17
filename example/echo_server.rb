@@ -37,7 +37,7 @@ class Client
     # Rolling::Util.log_info ret
     return unless ret.state == :ok
 
-    @nbytes_sent += ret.data.limit
+    @nbytes_sent += ret.data
     Rolling::Util.log_info "#{@nbytes_sent} bytes was echoed back" if (@nbytes_sent % 1024).zero?
   end
 end

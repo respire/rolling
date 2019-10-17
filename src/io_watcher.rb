@@ -4,7 +4,7 @@ module Rolling
   class IOWatcher
     AsyncReadRequest = Struct.new(:nbytes, :callback)
     AsyncReadResult = Struct.new(:state, :data)
-    AsyncWriteRequest = Struct.new(:buffer, :callback)
+    AsyncWriteRequest = Struct.new(:chunks, :bytes_sent, :callback)
     AsyncWriteResult = Struct.new(:state, :data)
     attr_reader :evloop, :remote_addr, :remote_port
 
@@ -17,6 +17,7 @@ module Rolling
       @monitor.interests = nil
       @monitor.value = method(:handle_io_events)
       @monitoring_read = false
+      @monitoring_write = false
       @read_chunks = ReadBufferChunks.new
       @rseqs = []
       @write_chunks = WriteBufferChunks.new
@@ -41,8 +42,19 @@ module Rolling
       data = data.join if data.is_a?(::Array)
       raise ::ArgumentError, 'data to write should be a non-empty string' if !data.is_a?(::String) || data.empty?
 
-      @wseqs << AsyncWriteRequest.new(@write_chunks.add(data), callback)
-      check_if_any_wseq_can_be_resolved
+      if @eof
+        res = AsyncWriteResult.new(:eof, @eof_reason)
+        Util.safe_execute { callback.call(res) }
+      else
+        chunks = @write_chunks.add(data)
+        @wseqs << AsyncWriteRequest.new(chunks, data.bytesize, callback)
+      end
+
+      if !@wseqs.empty? && !@monitoring_write && !@monitor.closed?
+        @monitoring_write = true
+        @monitor.add_interest(:w)
+      end
+
       self
     end
 
@@ -55,6 +67,8 @@ module Rolling
 
     def unwatch
       selector.deregister(@io)
+      @monitoring_read = false
+      @monitoring_write = false
       @io
     end
 
@@ -71,13 +85,17 @@ module Rolling
         default_errback.call if !@read_chunks.backoff? && bytes_read&.zero?
         check_if_any_rseq_can_be_resolved
         if (@rseqs.empty? || @read_chunks.backoff?) && !monitor.closed?
-          @monitoring_read = false
           monitor.remove_interest(:r)
+          @monitoring_read = false
         end
       elsif monitor.writable?
         bytes_sent = nil
-        Util.safe_execute(method(:unwatch_and_close)) { bytes_sent = @write_chunks.write_some(monitor.io) }
+        Util.safe_execute(default_errback) { bytes_sent = @write_chunks.write_some(monitor.io) }
         check_if_any_wseq_can_be_resolved
+        if @wseqs.empty? && !monitor.closed?
+          monitor.remove_interest(:w)
+          @monitoring_write = false
+        end
       end
     end
 
@@ -88,7 +106,7 @@ module Rolling
     def read_data_from_chunks(nbytes, callback)
       if @eof
         res = AsyncReadResult.new(:eof, @eof_reason)
-        Util.safe_execute(default_errback) { callback.call(res) }
+        Util.safe_execute { callback.call(res) }
       else
         data = nbytes < 0 ? @read_chunks.pull : @read_chunks.get(nbytes)
         if data == :unavailable
@@ -99,7 +117,7 @@ module Rolling
         end
       end
 
-      if !@read_chunks.backoff? && !@rseqs.empty? && !@monitoring_read
+      if !@read_chunks.backoff? && !@rseqs.empty? && !@monitoring_read && !@monitor.closed?
         @monitoring_read = true
         @monitor.add_interest(:r)
       end
@@ -138,35 +156,27 @@ module Rolling
 
       purge_idx = -1
       @wseqs.each do |wseq|
-        state = :ok
-        res = wseq.buffer
-
         if @eof
-          state = :eof
-          res = @eof_reason
-        elsif wseq.buffer.remaining > 0
-          break
-        end
+          res = AsyncWriteResult.new(:eof, @eof_reason)
+          Util.safe_execute { callback.call(res) }
+        else
+          chunks_purge_idx = -1
+          wseq.chunks.each do |chunk|
+            break if chunk.remaining > 0
 
-        ret = AsyncWriteResult.new(state, res)
-        errback = method(:unwatch_and_close)
+            chunks_purge_idx += 1
+          end
+          wseq.chunks.slice!(0..chunks_purge_idx) if chunks_purge_idx >= 0
+          break unless wseq.chunks.empty?
 
-        @evloop.next_tick do
-          Util.safe_execute(errback) { wseq.callback.call(ret) }
+          res = AsyncWriteResult.new(:ok, wseq.bytes_sent)
+          Util.safe_execute(default_errback) { wseq.callback.call(res) }
         end
 
         purge_idx += 1
       end
 
       @wseqs.slice!(0..purge_idx) if purge_idx >= 0
-
-      return if @eof
-
-      if @wseqs.empty?
-        @monitor.remove_interest(:w)
-      else
-        @monitor.add_interest(:w)
-      end
     end
   end
 end
