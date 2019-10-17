@@ -28,7 +28,7 @@ module Rolling
       return unless monitor.readable?
 
       sock = monitor.io.accept_nonblock
-      watcher = @evloop.watch(sock, &@on_eof)
+      watcher = @evloop.watch(sock, @on_eof)
       close_remote_connection = ->(ex) { watcher.unwatch_and_close(ex) }
       Util.safe_execute(close_remote_connection) { @on_accept.call(watcher) }
     end

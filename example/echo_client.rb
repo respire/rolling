@@ -30,6 +30,9 @@ class TCPEchoClient
       @watcher = res.data
       write_some
       read_some
+    when :eof
+      Rolling::Util.log_info 'remote terminates connection'
+      @evloop.stop
     when :error
       Rolling::Util.log_info 'failed to connect to remote server'
       @evloop.stop
@@ -60,9 +63,6 @@ class TCPEchoClient
         @tx_last_ticks = current_ticks
       end
       write_some
-    when :eof
-      Rolling::Util.log_info 'remote closed connection'
-      @evloop.stop
     end
   end
 
@@ -82,9 +82,6 @@ class TCPEchoClient
         @rx_last_ticks = current_ticks
       end
       read_some
-    when :eof
-      Rolling::Util.log_info 'remote closed connection'
-      @evloop.stop
     end
   end
 

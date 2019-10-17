@@ -12,14 +12,20 @@ module Rolling
 
     def fire
       cticks = Task.current_ticks
-      tasks_fired = []
+      tasks_to_trigger = []
       @tasks.each do |task|
         break unless task.should_fire?(cticks)
 
-        tasks_fired << task
-        Util.safe_execute { task.callback.call }
+        tasks_to_trigger << task
       end
-      @tasks.subtract(tasks_fired) unless tasks_fired.empty?
+
+      unless tasks_to_trigger.empty?
+        @tasks.subtract(tasks_to_trigger)
+        tasks_to_trigger.each do |task|
+          Util.safe_execute { task.callback.call }
+        end
+      end
+
       next_task = @tasks.first
       return unless next_task
 

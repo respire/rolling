@@ -93,7 +93,7 @@ class TCPEchoServer
   end
 
   def report
-    # Rolling::Util.logger.info "connected clients: #{@clients.length}"
+    Rolling::Util.logger.info "connected clients: #{@clients.length}"
     @evloop.add_timer(3, &method(:report))
   end
 end

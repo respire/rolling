@@ -43,8 +43,14 @@ module Rolling
       Util.safe_execute { @callback.call(ret) }
     end
 
+    def on_connection_eof(e, _)
+      detach
+      ret = AsyncConnectResult.new(:eof, e)
+      Util.safe_execute { @callback.call(ret) }
+    end
+
     def on_connection_established
-      watcher = @evloop.watch(detach)
+      watcher = @evloop.watch(detach, method(:on_connection_eof))
       close_remote_connection = ->(ex) { watcher.unwatch_and_close(ex) }
       ret = AsyncConnectResult.new(:ok, watcher)
       Util.safe_execute(close_remote_connection) { @callback.call(ret) }

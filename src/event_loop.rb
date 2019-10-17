@@ -43,7 +43,7 @@ module Rolling
       IOConnector.new(self, io, remote_addr, &blk)
     end
 
-    def watch(io, &eofback)
+    def watch(io, eofback)
       IOWatcher.new(self, io, eofback)
     end
 
