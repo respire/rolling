@@ -8,9 +8,10 @@ module Rolling
     AsyncWriteResult = Struct.new(:state, :data)
     attr_reader :evloop, :remote_addr, :remote_port
 
-    def initialize(evloop, io)
+    def initialize(evloop, io, eofback)
       @evloop = evloop
       @io = io
+      @eofback = eofback
       @local_addr = io.local_address
       @remote_addr = io.remote_address
       @monitor = selector.register(io, :rw)
@@ -62,6 +63,7 @@ module Rolling
       @eof = true
       @eof_reason = ex
       unwatch.close
+      Util.safe_execute { @eofback.call(@eof_reason, self) }
       @io
     end
 

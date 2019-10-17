@@ -35,16 +35,16 @@ module Rolling
       self
     end
 
-    def listen(io, &blk)
-      IOListener.new(self, io, &blk)
+    def listen(io, on_accept, on_eof)
+      IOListener.new(self, io, on_accept, on_eof)
     end
 
     def connect(io, remote_addr, &blk)
       IOConnector.new(self, io, remote_addr, &blk)
     end
 
-    def watch(io)
-      IOWatcher.new(self, io)
+    def watch(io, &eofback)
+      IOWatcher.new(self, io, eofback)
     end
 
     private

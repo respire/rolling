@@ -4,10 +4,11 @@ module Rolling
   class IOListener
     attr_reader :evloop
 
-    def initialize(evloop, io, &acceptor)
+    def initialize(evloop, io, on_accept, on_eof)
       @evloop = evloop
       @io = io
-      @acceptor = acceptor
+      @on_accept = on_accept
+      @on_eof = on_eof
       @monitor = selector.register(io, :r)
       @monitor.value = method(:handle_io_events)
     end
@@ -27,9 +28,9 @@ module Rolling
       return unless monitor.readable?
 
       sock = monitor.io.accept_nonblock
-      watcher = @evloop.watch(sock)
+      watcher = @evloop.watch(sock, &@on_eof)
       close_remote_connection = ->(ex) { watcher.unwatch_and_close(ex) }
-      Util.safe_execute(close_remote_connection) { @acceptor.call(watcher) }
+      Util.safe_execute(close_remote_connection) { @on_accept.call(watcher) }
     end
   end
 end
