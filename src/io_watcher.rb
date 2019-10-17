@@ -158,7 +158,7 @@ module Rolling
       @wseqs.each do |wseq|
         if @eof
           res = AsyncWriteResult.new(:eof, @eof_reason)
-          Util.safe_execute { callback.call(res) }
+          Util.safe_execute { wseq.callback.call(res) }
         else
           chunks_purge_idx = -1
           wseq.chunks.each do |chunk|

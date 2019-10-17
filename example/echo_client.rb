@@ -12,6 +12,8 @@ class TCPEchoClient
     @nbytes_sent = 0
     @rx = 0
     @tx = 0
+    @bytes_to_send = 16 * 1024 * 1024
+    @content = @bytes_to_send.times.map { rand(0...255) }.pack("C#{@bytes_to_send}")
     register_client
   end
 
@@ -31,8 +33,7 @@ class TCPEchoClient
   end
 
   def write_some
-    content = 100.times.map { SecureRandom.hex }.join
-    @watcher.async_write(content, &method(:on_write_complete))
+    @watcher.async_write(@content, &method(:on_write_complete))
   end
 
   def read_some

@@ -42,7 +42,6 @@ class Client
       end
 
       @watcher.async_write(ret.data, &method(:on_write_complete))
-      read_and_echo
     when :eof
       @on_disconnected.call(self)
     end
@@ -53,6 +52,7 @@ class Client
     return unless ret.state == :ok
 
     @nbytes_sent += ret.data
+    read_and_echo
     @tx_last_ticks ||= Rolling::Task.current_ticks
     current_ticks = Rolling::Task.current_ticks
     return unless current_ticks - @tx_last_ticks >= 3
