@@ -12,8 +12,12 @@ class TCPEchoClient
     @nbytes_sent = 0
     @rx = 0
     @tx = 0
-    @bytes_to_send = 16 * 1024 * 1024
-    @content = @bytes_to_send.times.map { rand(0...255) }.pack("C#{@bytes_to_send}")
+    @mb_to_send = 16
+    @bytes_to_send = @mb_to_send * 1024 * 1024
+    @content = String.new('', capacity: @bytes_to_send)
+    @mb_to_send.times.each do
+      @content << SecureRandom.random_bytes(1024 * 1024)
+    end
     register_client
   end
 

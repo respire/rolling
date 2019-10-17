@@ -4,8 +4,8 @@ module Rolling
   class ReadBufferChunks
     def initialize
       @chunks = []
-      @nbytes_per_chunks = 16_384
-      @max_chunks = 64
+      @nbytes_per_chunks = 16_384 # 16k
+      @max_chunks = 4
       @total_nbytes = 0
       @backoff = false
     end
@@ -39,7 +39,10 @@ module Rolling
       end
 
       @chunks.slice!(0..purge_idx) if purge_idx >= 0
-      @backoff = @chunks.length >= @max_chunks
+      if @chunks.length < @max_chunks || !@chunks.last.full?
+        # we can read more bytes
+        @backoff = false
+      end
 
       @total_nbytes -= nbytes
       strs_read.join
@@ -53,7 +56,11 @@ module Rolling
       total_bytes_read = 0
       loop do
         chunk = find_an_available_chunk_to_fill
-        break unless chunk
+        unless chunk
+          # full, trigger backoff policy
+          @backoff = true
+          break
+        end
 
         nbytes = chunk.read_from(io)
         total_bytes_read += nbytes
@@ -72,15 +79,12 @@ module Rolling
     end
 
     def append_chunks
-      # use backoff overflow policy
       chunk = nil
 
       if @chunks.length < @max_chunks
         chunk = NIO::ByteBuffer.new(@nbytes_per_chunks)
         @chunks << chunk
       end
-
-      @backoff = @chunks.length >= @max_chunks
 
       chunk
     end

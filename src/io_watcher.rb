@@ -79,24 +79,31 @@ module Rolling
     end
 
     def handle_io_events(monitor)
-      if monitor.readable?
-        bytes_read = nil
-        Util.safe_execute(default_errback) { bytes_read = @read_chunks.read_some(monitor.io) }
-        default_errback.call if !@read_chunks.backoff? && bytes_read&.zero?
-        check_if_any_rseq_can_be_resolved
-        if (@rseqs.empty? || @read_chunks.backoff?) && !monitor.closed?
-          monitor.remove_interest(:r)
-          @monitoring_read = false
-        end
-      elsif monitor.writable?
-        bytes_sent = nil
-        Util.safe_execute(default_errback) { bytes_sent = @write_chunks.write_some(monitor.io) }
-        check_if_any_wseq_can_be_resolved
-        if @wseqs.empty? && !monitor.closed?
-          monitor.remove_interest(:w)
-          @monitoring_write = false
-        end
+      handle_readable(monitor) if monitor.readable?
+      handle_writable(monitor) if monitor.writable?
+    end
+
+    def handle_readable(monitor)
+      bytes_read = nil
+      Util.safe_execute(default_errback) { bytes_read = @read_chunks.read_some(monitor.io) }
+      if !@read_chunks.backoff? && bytes_read&.zero?
+        # EOF
+        default_errback.call
+      elsif (@rseqs.empty? || @read_chunks.backoff?) && !monitor.closed?
+        monitor.remove_interest(:r)
+        @monitoring_read = false
       end
+      check_if_any_rseq_can_be_resolved
+    end
+
+    def handle_writable(monitor)
+      bytes_sent = nil
+      Util.safe_execute(default_errback) { bytes_sent = @write_chunks.write_some(monitor.io) }
+      check_if_any_wseq_can_be_resolved
+      return unless @wseqs.empty? && !monitor.closed?
+
+      monitor.remove_interest(:w)
+      @monitoring_write = false
     end
 
     def default_errback
