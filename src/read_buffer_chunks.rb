@@ -5,88 +5,43 @@ module Rolling
     def initialize
       @chunks = []
       @nbytes_per_chunks = 16_384 # 16k
-      @max_chunks = 4
-      @total_nbytes = 0
-      @backoff = false
-    end
-
-    def can_read?(nbytes)
-      @total_nbytes >= nbytes
     end
 
     def backoff?
-      @backoff
+      @chunks.empty?
     end
 
-    def get(nbytes)
-      return '' if nbytes < 1
-      return :unavailable unless can_read?(nbytes)
+    def pull(total_bytes_to_receive)
+      total_bytes_to_receive = @nbytes_per_chunks if total_bytes_to_receive < 1
+      nbytes = total_bytes_to_receive
+      buffer_chunks = []
 
-      bytes_to_read = nbytes
-      strs_read = []
-      purge_idx = -1
-      @chunks.each do |chunk|
-        chunk.flip
-        bytes_can_read = chunk.limit > bytes_to_read ? bytes_to_read : chunk.limit
-        bytes_to_read -= bytes_can_read
-        strs_read << chunk.get(bytes_can_read)
-        if chunk.remaining.zero?
-          purge_idx += 1
-        else
-          chunk.compact
-        end
-        break if bytes_to_read < 1
+      while nbytes > 0
+        chunk = NIO::ByteBuffer.new(@nbytes_per_chunks)
+        chunk.limit = nbytes if nbytes < @nbytes_per_chunks
+        buffer_chunks << chunk
+        nbytes -= chunk.limit
       end
 
-      @chunks.slice!(0..purge_idx) if purge_idx >= 0
-      if @chunks.length < @max_chunks || !@chunks.last.full?
-        # we can read more bytes
-        @backoff = false
-      end
+      @chunks += buffer_chunks
 
-      @total_nbytes -= nbytes
-      strs_read.join
-    end
-
-    def pull
-      @total_nbytes < 1 ? :unavailable : get(@total_nbytes)
+      [total_bytes_to_receive, buffer_chunks]
     end
 
     def read_some(io)
-      total_bytes_read = 0
-      loop do
-        chunk = find_an_available_chunk_to_fill
-        unless chunk
-          # full, trigger backoff policy
-          @backoff = true
-          break
-        end
+      purge_idx = -1
+      bytes_received = 0
 
-        nbytes = chunk.read_from(io)
-        total_bytes_read += nbytes
-        break if nbytes.zero?
-      end
-      @total_nbytes += total_bytes_read
-      total_bytes_read
-    end
+      @chunks.each do |chunk|
+        bytes_received += chunk.read_from(io)
+        break unless chunk.full?
 
-    private
-
-    def find_an_available_chunk_to_fill
-      last_chunk = @chunks.last
-      last_chunk = append_chunks if last_chunk.nil? || last_chunk.full?
-      last_chunk
-    end
-
-    def append_chunks
-      chunk = nil
-
-      if @chunks.length < @max_chunks
-        chunk = NIO::ByteBuffer.new(@nbytes_per_chunks)
-        @chunks << chunk
+        purge_idx += 1
       end
 
-      chunk
+      @chunks.slice!(0..purge_idx) if purge_idx >= 0
+
+      bytes_received
     end
   end
 end

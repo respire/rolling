@@ -2,7 +2,7 @@
 
 module Rolling
   class IOWatcher
-    AsyncReadRequest = Struct.new(:nbytes, :callback)
+    AsyncReadRequest = Struct.new(:chunks, :bytes_to_read, :callback)
     AsyncReadResult = Struct.new(:state, :data)
     AsyncWriteRequest = Struct.new(:chunks, :bytes_sent, :callback)
     AsyncWriteResult = Struct.new(:state, :data)
@@ -32,31 +32,15 @@ module Rolling
     end
 
     def async_read(nbytes, &callback)
-      read_data_from_chunks(nbytes, callback)
+      request_read(nbytes, :callback, callback)
     end
 
     def async_read_some(&callback)
-      read_data_from_chunks(-1, callback)
+      request_read(0, :callback, callback)
     end
 
     def async_write(data, &callback)
-      data = data.join if data.is_a?(::Array)
-      raise ::ArgumentError, 'data to write should be a non-empty string' if !data.is_a?(::String) || data.empty?
-
-      if @eof
-        res = AsyncWriteResult.new(:eof, @eof_reason)
-        Util.safe_execute { callback.call(res) }
-      else
-        chunks = @write_chunks.add(data)
-        @wseqs << AsyncWriteRequest.new(chunks, data.bytesize, callback)
-      end
-
-      if !@wseqs.empty? && !@monitoring_write && !@monitor.closed?
-        @monitoring_write = true
-        @monitor.add_interest(:w)
-      end
-
-      self
+      request_write(data, :callback, callback)
     end
 
     def unwatch_and_close(ex = nil)
@@ -88,10 +72,10 @@ module Rolling
     def handle_readable(monitor)
       bytes_read = nil
       Util.safe_execute(default_errback) { bytes_read = @read_chunks.read_some(monitor.io) }
-      if !@read_chunks.backoff? && bytes_read&.zero?
+      if bytes_read&.zero?
         # EOF
         default_errback.call
-      elsif (@rseqs.empty? || @read_chunks.backoff?) && !monitor.closed?
+      elsif @read_chunks.backoff? && !monitor.closed?
         monitor.remove_interest(:r)
         @monitoring_read = false
       end
@@ -112,42 +96,73 @@ module Rolling
       @default_errback ||= method(:unwatch_and_close)
     end
 
-    def read_data_from_chunks(nbytes, callback)
+    def request_read(nbytes, type, target)
+      res = nil
+
       if @eof
         res = AsyncReadResult.new(:eof, @eof_reason)
-        Util.safe_execute { callback.call(res) }
       else
-        data = nbytes < 0 ? @read_chunks.pull : @read_chunks.get(nbytes)
-        if data == :unavailable
-          @rseqs << AsyncReadRequest.new(nbytes, callback)
-        else
-          res = AsyncReadResult.new(:ok, data)
-          Util.safe_execute(default_errback) { callback.call(res) }
+        bytes_to_read, chunks = @read_chunks.pull(nbytes)
+        hnd = case type
+              when :callback
+                target
+              end
+        @rseqs << AsyncReadRequest.new(chunks, bytes_to_read, hnd)
+        unless @monitoring_read
+          @monitor.add_interest(:r)
+          @monitoring_read = true
         end
       end
 
-      if !@read_chunks.backoff? && !@rseqs.empty? && !@monitoring_read && !@monitor.closed?
-        @monitoring_read = true
-        @monitor.add_interest(:r)
+      case type
+      when :callback
+        Util.safe_execute { target.call(res) } if res
+      end
+    end
+
+    def request_write(data, type, target)
+      res = nil
+
+      if @eof
+        res = AsyncWriteResult.new(:eof, @eof_reason)
+      else
+        chunks = @write_chunks.add(data)
+        hnd = case type
+              when :callback
+                target
+              end
+        @wseqs << AsyncWriteRequest.new(chunks, data.bytesize, hnd)
+        unless @monitoring_write
+          @monitor.add_interest(:w)
+          @monitoring_write = true
+        end
       end
 
-      self
+      case type
+      when :callback
+        Util.safe_execute { target.call(res) } if res
+      end
     end
 
     def check_if_any_rseq_can_be_resolved
-      return if @rseqs.empty?
-
       purge_idx = -1
+
       @rseqs.each do |rseq|
         res = nil
-        state = :ok
+        state = nil
 
         if @eof
           state = :eof
           res = @eof_reason
+        elsif rseq.chunks.last.full?
+          state = :ok
+          # WARNING: MIGHT COPY TWICE
+          res = String.new('', capacity: rseq.bytes_to_read)
+          rseq.chunks.each do |chunk|
+            res << chunk.flip.get
+          end
         else
-          res = rseq.nbytes == -1 ? @read_chunks.pull : @read_chunks.get(rseq.nbytes)
-          break if res == :unavailable
+          break
         end
 
         ret = AsyncReadResult.new(state, res)
