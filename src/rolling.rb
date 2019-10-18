@@ -15,4 +15,8 @@ module Rolling
   require_relative 'io_listener'
   require_relative 'io_connector'
   require_relative 'event_loop'
+  require_relative 'fiber_worker'
+  require_relative 'connection'
+  require_relative 'basic_fiber_client'
+  require_relative 'basic_fiber_server'
 end

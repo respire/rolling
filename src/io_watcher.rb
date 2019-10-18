@@ -31,6 +31,10 @@ module Rolling
       "\#<Rolling::IOWatcher:#{format('%#x', object_id)} @remote_addr=#{@remote_addr.inspect} @local_addr=#{@local_addr.inspect} #{@eof ? 'EOF' : ''} #{@eof_reason}>"
     end
 
+    def to_s
+      inspect
+    end
+
     def async_read(nbytes, &callback)
       request_read(nbytes, :callback, callback)
     end
@@ -43,7 +47,20 @@ module Rolling
       request_write(data, :callback, callback)
     end
 
+    def fiber_worker_read(nbytes, fiber_worker)
+      request_read(nbytes, :fiber_worker, fiber_worker)
+    end
+
+    def fiber_worker_read_some(fiber_worker)
+      request_read(0, :fiber_worker, fiber_worker)
+    end
+
+    def fiber_worker_write(data, fiber_worker)
+      request_write(data, :fiber_worker, fiber_worker)
+    end
+
     def unwatch_and_close(ex = nil)
+      return if @eof
       @eof = true
       @eof_reason = ex
       unwatch.close
@@ -52,7 +69,8 @@ module Rolling
     end
 
     def unwatch
-      selector.deregister(@io)
+      return if @monitor.closed?
+      @monitor.close
       @monitoring_read = false
       @monitoring_write = false
       @io
@@ -72,7 +90,7 @@ module Rolling
     def handle_readable(monitor)
       bytes_read = nil
       Util.safe_execute(default_errback) { bytes_read = @read_chunks.read_some(monitor.io) }
-      if bytes_read&.zero?
+      if !@read_chunks.backoff? && bytes_read&.zero?
         # EOF
         default_errback.call
       elsif @read_chunks.backoff? && !monitor.closed?
@@ -106,6 +124,8 @@ module Rolling
         hnd = case type
               when :callback
                 target
+              when :fiber_worker
+                target.resume_callback
               end
         @rseqs << AsyncReadRequest.new(chunks, bytes_to_read, hnd)
         unless @monitoring_read
@@ -117,6 +137,8 @@ module Rolling
       case type
       when :callback
         Util.safe_execute { target.call(res) } if res
+      when :fiber_worker
+        res.nil? ? Fiber.yield : res
       end
     end
 
@@ -130,6 +152,8 @@ module Rolling
         hnd = case type
               when :callback
                 target
+              when :fiber_worker
+                target.resume_callback
               end
         @wseqs << AsyncWriteRequest.new(chunks, data.bytesize, hnd)
         unless @monitoring_write
@@ -141,6 +165,8 @@ module Rolling
       case type
       when :callback
         Util.safe_execute { target.call(res) } if res
+      when :fiber_worker
+        res.nil? ? Fiber.yield : res
       end
     end
 
@@ -176,8 +202,6 @@ module Rolling
     end
 
     def check_if_any_wseq_can_be_resolved
-      return if @wseqs.empty?
-
       purge_idx = -1
       @wseqs.each do |wseq|
         if @eof

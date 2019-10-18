@@ -6,6 +6,10 @@ module Rolling
       @tasks = SortedSet.new
     end
 
+    def empty?
+      @tasks.empty?
+    end
+
     def append(period, &callback)
       @tasks.add Task.new(period, &callback)
     end

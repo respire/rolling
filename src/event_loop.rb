@@ -12,7 +12,7 @@ module Rolling
     def run
       @state = :running
 
-      until @state == :stopping || @state == :stopped
+      until @state == :stopping || @state == :stopped || (@selector.empty? && @task_manager.empty?)
         select_timeout = @task_manager.fire
         @selector.select(select_timeout, &method(:handle_events))
       end
