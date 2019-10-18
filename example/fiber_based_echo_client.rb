@@ -25,7 +25,6 @@ class Client < Rolling::BasicFiberClient
 
     loop do
       res = conn.write(@content)
-      log_info "#{res}"
       break unless res.state == :ok
 
       @nbytes_sent += res.data
@@ -40,9 +39,7 @@ class Client < Rolling::BasicFiberClient
         @flip = true
       end
 
-      log_info '1'
       res = conn.read(@content.bytesize)
-      log_info '2'
       break unless res.state == :ok
       @nbytes_read += res.data.bytesize
       @rx_last_ticks ||= Rolling::Task.current_ticks
