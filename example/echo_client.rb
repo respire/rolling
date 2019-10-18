@@ -56,7 +56,7 @@ class TCPEchoClient
       current_ticks = Rolling::Task.current_ticks
       if current_ticks - @tx_last_ticks >= 3
         @tx_last_nbytes_read ||= 0
-        current_nbytes_read = @nbytes_read
+        current_nbytes_read = @nbytes_sent
         @tx = ((current_nbytes_read - @tx_last_nbytes_read) / 1024.0 / (current_ticks - @tx_last_ticks)).round
         Rolling::Util.log_info "RX: #{@rx} KB/s | TX: #{@tx} KB/s"
         @tx_last_nbytes_read = current_nbytes_read
