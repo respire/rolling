@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Rolling
   class BasicFiberClient
     def initialize(evloop, host:, port:)
@@ -9,15 +11,15 @@ module Rolling
 
     protected
 
-    def on_connected(conn)
+    def on_connected(_conn)
       raise NotImplementedError
     end
 
-    def on_disconnected(ex, conn)
+    def on_disconnected(_ex, _conn)
       raise NotImplementedError
     end
 
-    def on_connection_failed(ex)
+    def on_connection_failed(_ex)
       raise NotImplementedError
     end
 
@@ -35,6 +37,7 @@ module Rolling
       case res.state
       when :ok
         # connection established
+        @watcher = res.data
         @worker = FiberWorker.new
         @connection = Connection.new(@evloop, res.data, @worker)
         connected_handler = build_connected_handler
@@ -49,11 +52,9 @@ module Rolling
 
     def build_connected_handler
       proc do |conn|
-        begin
-          on_connected(conn)
-        ensure
-          conn.close
-        end
+        on_connected(conn)
+      ensure
+        conn.close
       end
     end
 

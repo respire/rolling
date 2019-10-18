@@ -7,6 +7,12 @@ module Rolling
       @nbytes_per_chunks = 16_384
     end
 
+    def report
+      {
+        chunks: @chunks.length
+      }
+    end
+
     def add(data)
       total_bytes_to_send = data.bytesize
       data_chunks = []

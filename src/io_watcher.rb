@@ -35,6 +35,20 @@ module Rolling
       inspect
     end
 
+    def report
+      {
+        local_addr: @local_addr.inspect,
+        remote_addr: @remote_addr.inspect,
+        rseqs: @rseqs.length,
+        wseqs: @wseqs.length,
+        rchunks: @read_chunks.report,
+        wchunks: @write_chunks.report,
+        interests: @monitor.interests,
+        eof: @eof,
+        eof_reason: @eof_reason
+      }
+    end
+
     def async_read(nbytes, &callback)
       request_read(nbytes, :callback, callback)
     end
@@ -61,6 +75,7 @@ module Rolling
 
     def unwatch_and_close(ex = nil)
       return if @eof
+
       @eof = true
       @eof_reason = ex
       unwatch.close
@@ -70,6 +85,7 @@ module Rolling
 
     def unwatch
       return if @monitor.closed?
+
       @monitor.close
       @monitoring_read = false
       @monitoring_write = false

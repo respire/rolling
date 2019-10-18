@@ -11,6 +11,12 @@ module Rolling
       @chunks.empty?
     end
 
+    def report
+      {
+        chunks: @chunks.length
+      }
+    end
+
     def pull(total_bytes_to_receive)
       total_bytes_to_receive = @nbytes_per_chunks if total_bytes_to_receive < 1
       nbytes = total_bytes_to_receive

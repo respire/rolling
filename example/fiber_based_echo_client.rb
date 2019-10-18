@@ -12,7 +12,7 @@ class Client < Rolling::BasicFiberClient
     @rx = 0
     @tx = 0
     @flip = false
-    @mb_to_send = 16
+    @mb_to_send = 1
     @bytes_to_send = @mb_to_send * 1024 * 1024
     @content = String.new('', capacity: @bytes_to_send)
     @mb_to_send.times.each do
@@ -41,6 +41,7 @@ class Client < Rolling::BasicFiberClient
 
       res = conn.read(@content.bytesize)
       break unless res.state == :ok
+
       @nbytes_read += res.data.bytesize
       @rx_last_ticks ||= Rolling::Task.current_ticks
       current_ticks = Rolling::Task.current_ticks
