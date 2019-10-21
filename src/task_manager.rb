@@ -3,43 +3,34 @@
 module Rolling
   class TaskManager
     def initialize
-      @tasks = []
-      @dirty = false
+      @queue = TaskQueue.new
     end
 
     def empty?
-      @tasks.empty?
+      @queue.empty?
     end
 
     def append(period, &callback)
       task = Task.new(period, &callback)
-      @dirty = true
-      @tasks << task
+      @queue.add task
     end
 
     def fire
       cticks = Task.current_ticks
 
-      if @dirty
-        @tasks.sort! { |lhs, rhs| lhs.ticks - rhs.ticks }
-        @dirty = false
-      end
+      next_task = @queue.first
 
-      purge_idx = -1
-      @tasks.each do |task|
-        break unless task.ticks <= cticks
-
-        purge_idx += 1
-      end
-
-      unless purge_idx == -1
-        tasks_to_trigger = @tasks.slice!(0..purge_idx)
+      if next_task && next_task.ticks <= cticks
+        tasks_to_trigger = []
+        while next_task && next_task.ticks <= cticks
+          tasks_to_trigger << @queue.pop
+          next_task = @queue.first
+        end
         tasks_to_trigger.each do |task|
           Util.safe_execute { task.callback.call }
         end
       end
 
-      next_task = @tasks.first
       return unless next_task
 
       next_dticks = next_task.ticks - Task.current_ticks
