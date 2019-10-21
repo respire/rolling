@@ -34,7 +34,6 @@ module Rolling
       return unless next_task
 
       next_dticks = next_task.ticks - Task.current_ticks
-      next_dticks = next_dticks * 1.0 / 10e9
       next_dticks < 0.001 ? 0.001 : next_dticks
     end
   end
