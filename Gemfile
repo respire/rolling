@@ -6,4 +6,5 @@ gem 'nio4r', '~> 2.5.2'
 
 group :development, :test do
   gem 'rubocop'
+  gem 'ruby-prof'
 end
